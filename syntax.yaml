@@ -1,0 +1,77 @@
+keywords:
+  - auto
+  - break
+  - case
+  - const
+  - continue
+  - default
+  - do
+  - double
+  - else
+  - enum
+  - extern
+  - for
+  - goto
+  - if
+  - long
+  - register
+  - return
+  - short
+  - signed
+  - sizeof
+  - static
+  - struct
+  - switch
+  - typedef
+  - union
+  - unsigned
+  - void
+  - volatile
+  - while
+  - '#include'
+  - '#define'
+
+functions:
+  - int
+  - char
+  - float
+
+operators:
+  - '+'
+  - '-'
+  - '*'
+  - '/'
+  - '='
+  - '=='
+  - '!='
+  - '<'
+  - '>'
+  - '<='
+  - '>='
+
+symbols:
+  - '('
+  - ')'
+  - '{'
+  - '}'
+  - '['
+  - ']'
+  - ':'
+  - ','
+  - '.'
+  - ';'
+  - '='
+  - '->'
+
+singlecomments:
+  - '/'
+
+multicomments1:
+  - '/'
+
+multicomments2:
+  - '*'
+
+strings:
+  - "\""
+  - "'"
