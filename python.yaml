@@ -1,7 +1,5 @@
 keywords:
-  - "False"
   - None
-  - "True"
   - and
   - as
   - assert
@@ -51,6 +49,8 @@ functions:
   - sum
   - type
   - zip
+  - "True"
+  - "False"
 
 operators:
   - '+'
@@ -58,7 +58,6 @@ operators:
   - '*'
   - '**'
   - '/'
-  - '//'
   - '%'
   - '=='
   - '!='
@@ -90,10 +89,10 @@ singlecomments:
   - '#'
 
 multicomments1:
-  - '"""'
+  - "\"\"\""
 
 multicomments2:
-  - "'''"
+  - "\"\"\""
 
 strings:
   - "\""

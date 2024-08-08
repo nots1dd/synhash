@@ -5,106 +5,15 @@
 #include <ctype.h>
 #include <ncurses.h>
 #include <unistd.h>
+#include "include/hashtable.h"
 
-#define TABLE_SIZE 1000
-
-// Define hash table entry structure
-typedef struct Entry {
-    char *key;
-    struct Entry *next;
-} Entry;
-
-// Define hash table structure
-typedef struct {
-    Entry *entries[TABLE_SIZE];
-} HashTable;
-
-// Function prototypes
-unsigned int hash(const char *key);
-HashTable* create_table();
-void free_table(HashTable *table);
-void insert(HashTable *table, const char *key);
-int search(HashTable *table, const char *key);
-void load_syntax(HashTable *keywords, HashTable *singlecomments, HashTable *multicomments1, HashTable *multicomments2, HashTable *strings, HashTable *functions, HashTable *symbols, HashTable *operators);
-void highlight_code(WINDOW *win, int start_y, int start_x, const char *code, HashTable *keywords, HashTable *singlecomments, HashTable *multicomments1, HashTable *multicomments2, HashTable *strings, HashTable *functions, HashTable *symbols, HashTable *operators);
-
-// Hash function
-unsigned int hash(const char *key) {
-    unsigned long int value = 0;
-    unsigned int i = 0;
-    unsigned int key_len = strlen(key);
-
-    // Perform bitwise operations
-    for (; i < key_len; ++i) {
-        value = value * 37 + key[i];
-    }
-
-    value = value % TABLE_SIZE;
-
-    return value;
-}
-
-// Create a new hash table
-HashTable* create_table() {
-    HashTable *table = (HashTable *)malloc(sizeof(HashTable));
-
-    for (int i = 0; i < TABLE_SIZE; ++i) {
-        table->entries[i] = NULL;
-    }
-
-    return table;
-}
-
-// Free the hash table
-void free_table(HashTable *table) {
-    for (int i = 0; i < TABLE_SIZE; ++i) {
-        Entry *entry = table->entries[i];
-        while (entry != NULL) {
-            Entry *temp = entry;
-            entry = entry->next;
-            free(temp->key);
-            free(temp);
-        }
-    }
-    free(table);
-}
-
-// Insert a key into the hash table
-void insert(HashTable *table, const char *key) {
-    unsigned int slot = hash(key);
-
-    Entry *entry = table->entries[slot];
-    while (entry != NULL) {
-        if (strcmp(entry->key, key) == 0) {
-            return; // Key already exists
-        }
-        entry = entry->next;
-    }
-
-    Entry *new_entry = (Entry *)malloc(sizeof(Entry));
-    new_entry->key = strdup(key);
-    new_entry->next = table->entries[slot];
-    table->entries[slot] = new_entry;
-}
-
-// Search for a key in the hash table
-int search(HashTable *table, const char *key) {
-    unsigned int slot = hash(key);
-
-    Entry *entry = table->entries[slot];
-    while (entry != NULL) {
-        if (strcmp(entry->key, key) == 0) {
-            return 1; // Key found
-        }
-        entry = entry->next;
-    }
-
-    return 0; // Key not found
-}
+/*#define TABLE_SIZE 1000*/
+int multicomments1_length = 0;
+int multicomments2_length = 0;
 
 // Load syntax from YAML file
-void load_syntax(HashTable *keywords, HashTable *singlecomments, HashTable *multicomments1, HashTable *multicomments2, HashTable *strings, HashTable *functions, HashTable *symbols, HashTable *operators) {
-    FILE *fh = fopen("syntax.yaml", "r");
+void load_syntax(const char *path, HashTable *keywords, HashTable *singlecomments, HashTable *multicomments1, HashTable *multicomments2, HashTable *strings, HashTable *functions, HashTable *symbols, HashTable *operators) {
+    FILE *fh = fopen(path, "r");
     yaml_parser_t parser;
     yaml_event_t event;
     int in_keywords = 0;
@@ -173,8 +82,10 @@ void load_syntax(HashTable *keywords, HashTable *singlecomments, HashTable *mult
                 } else if (in_singlecomments) {
                     insert(singlecomments, (char *)event.data.scalar.value);
                 } else if (in_multcomment1) {
+                    multicomments1_length += strlen((char *)event.data.scalar.value);
                     insert(multicomments1, (char *)event.data.scalar.value);
                 } else if (in_multcomment2) {
+                    multicomments2_length += strlen((char *)event.data.scalar.value);
                     insert(multicomments2, (char *)event.data.scalar.value);
                 } else if (in_strings) {
                     insert(strings, (char *)event.data.scalar.value);
@@ -214,28 +125,6 @@ void load_syntax(HashTable *keywords, HashTable *singlecomments, HashTable *mult
     yaml_event_delete(&event);
     yaml_parser_delete(&parser);
     fclose(fh); 
-}
-
-int hash_table_contains(HashTable *table, const char *key) {
-    char key_str[2] = {*key, '\0'};
-    unsigned int slot = hash(key_str);
-    Entry *entry = table->entries[slot];
-
-    while (entry != NULL) {
-        if (strcmp(entry->key, key_str) == 0) {
-            return 1;
-        }
-        entry = entry->next;
-    }
-    return 0;
-}
-
-int is_two_char_sequence_in_table(HashTable *table, const char *cursor) {
-    char two_char_sequence[2]; // 2 characters + null terminator
-    two_char_sequence[0] = *cursor;
-    two_char_sequence[1] = *(cursor + 1);
-
-    return hash_table_contains(table, two_char_sequence);
 }
 
 // Function to highlight code snippet
@@ -390,6 +279,10 @@ void highlight_code(WINDOW *win, int start_y, int start_x, const char *code, Has
                     wattron(win, COLOR_PAIR(3));
                     mvwprintw(win, y, x, "%s", buffer);
                     wattroff(win, COLOR_PAIR(3));
+                } else if (search(keywords, buffer)) {
+                  wattron(win, COLOR_PAIR(4));
+                  mvwprintw(win, y, x, "%s", buffer);
+                  wattroff(win, COLOR_PAIR(4));
                 } else {
                     mvwprintw(win, y, x, "%s", buffer);
                 }
@@ -431,19 +324,6 @@ void highlight_code(WINDOW *win, int start_y, int start_x, const char *code, Has
     }
 }
 
-void print_table(HashTable *table) {
-    for (int i = 0; i < 1000; ++i) {
-        Entry *entry = table->entries[i];
-        if (entry != NULL) {
-            while (entry != NULL) {
-                printf("  %s\n", entry->key);
-                entry = entry->next;
-            }
-        }
-    }
-    printf("\n");
-}
-
 int main() {
     // Initialize hash tables
     HashTable *keywords = create_table();
@@ -456,17 +336,23 @@ int main() {
     HashTable *operators = create_table();
 
     // Load syntax elements from YAML file
-    load_syntax(keywords, singlecomments, multicomments1, multicomments2, strings, functions, symbols, operators);
+    load_syntax("c.yaml", keywords, singlecomments, multicomments1, multicomments2, strings, functions, symbols, operators);
 
     // Initialize ncurses
     initscr();
     start_color();
-    init_pair(1, COLOR_RED, COLOR_BLACK);
-    init_pair(2, COLOR_GREEN, COLOR_BLACK);
-    init_pair(3, COLOR_YELLOW, COLOR_BLACK);
-    init_pair(4, COLOR_BLUE, COLOR_BLACK);
-    init_pair(5, COLOR_MAGENTA, COLOR_BLACK);
-    init_pair(6, COLOR_CYAN, COLOR_BLACK);
+    use_default_colors();
+    if (can_change_color()) {
+        // Normalize RGB values to the range 0-1000
+        init_color(COLOR_CYAN, 70 * 1000 / 255, 70 * 1000 / 255, 70 * 1000 / 255);
+    }
+
+    init_pair(1, COLOR_CYAN, -1);
+    init_pair(2, COLOR_GREEN, -1);
+    init_pair(3, COLOR_YELLOW, -1);
+    init_pair(4, COLOR_BLUE, -1);
+    init_pair(5, COLOR_MAGENTA, -1);
+    init_pair(6, COLOR_RED, -1);
     cbreak();
     refresh();
 
@@ -476,26 +362,28 @@ int main() {
     wrefresh(win);
 
     // Example code to highlight
-    const char *code = "#include <stdio.h> /* yoo does this comment exist? */ int main() {   printf(\"Hello, World!\"); const int y.x = 100; return 0; } //hello \n";
-    const char *pycode = "def example_func(x,y): \"\"\"This is some func\"\"\" if x > 0 and y < 0: return True else: return False";
+    const char *code = "#include <stdio.h>\n /* yoo does this comment exist? */\n int main() {\n  printf(\"Hello, World!\");\n  const int y.x = 100/5-9.0+44.347-ok;\n  return 0;\n } //hello \n";
+    const char *pycode = "import ** ## this is an import\n\ndef example_func(x,y):\n  \"\"\"This is some func\"\"\"\n  if x > 0 and y < 0:\n   return True\n else: \n   return False";
+
+    const char* java_code = 
+    "public class HelloWorld {\n"
+    "    public static void main(String[] args) {\n"
+    "        System.out.println(\"Hello, World!\");\n"
+    "    }\n"
+    "}";
+
 
     // Highlight the code
     highlight_code(win, 1, 1, code, keywords, singlecomments, multicomments1, multicomments2, strings, functions, symbols, operators);
     wrefresh(win);
 
-    // Wait for user input
+    // sleep for sometime (debugging step)
     sleep(3);
 
     // Clean up
     delwin(win);
     endwin();
-    print_table(keywords);
-    print_table(singlecomments);
-    print_table(multicomments1);
-    print_table(multicomments2);
-    print_table(strings);
-    print_table(functions);
-    print_table(symbols);
+    //printf("%d %d", multicomments1_length, multicomments2_length);
     free_table(keywords);
     free_table(singlecomments);
     free_table(strings);
