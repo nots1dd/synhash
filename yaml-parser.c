@@ -127,6 +127,12 @@ void load_syntax(const char *path, HashTable *keywords, HashTable *singlecomment
     fclose(fh); 
 }
 
+void colorLine(WINDOW* win, int color_pair, int y, int x, char *buffer) {
+  wattron(win, COLOR_PAIR(color_pair));
+  mvwprintw(win, y, x, "%s", buffer);
+  wattroff(win, COLOR_PAIR(color_pair));
+}
+
 // Function to highlight code snippet
 void highlight_code(WINDOW *win, int start_y, int start_x, const char *code, HashTable *keywords, HashTable *singlecomments, HashTable *multicomments1, HashTable *multicomments2, HashTable *strings, HashTable *functions, HashTable *symbols, HashTable *operators) {
     const char *cursor = code;
@@ -143,93 +149,68 @@ void highlight_code(WINDOW *win, int start_y, int start_x, const char *code, Has
             if (in_string && buffer_index > 0) {
                 buffer[buffer_index] = '\0';
                 if (search(strings, buffer)) {
-                    wattron(win, COLOR_PAIR(3));
-                    mvwprintw(win, y, x, "%s", buffer);
-                    wattroff(win, COLOR_PAIR(3));
+                    colorLine(win, 3, y, x, buffer);
                 } else {
                     mvwprintw(win, y, x, "%s", buffer);
                 }
                 x += buffer_index;
                 buffer_index = 0;
             }
-            wattron(win, COLOR_PAIR(3));
-            mvwprintw(win, y, x, "%c", *cursor);
-            wattroff(win, COLOR_PAIR(3));
+            colorLine(win, 3, y, x, (char[]){ *cursor, '\0' });
             x++;
             cursor++;
-        } else if (hash_table_contains(singlecomments, cursor) && hash_table_contains(singlecomments, cursor+1)) {
+        } else if (hash_table_contains(singlecomments, cursor) && hash_table_contains(singlecomments, cursor + 1)) {
             in_comment = 1;
             cursor++;
             if (buffer_index > 0) {
                 buffer[buffer_index] = '\0';
                 if (search(keywords, buffer)) {
-                    wattron(win, COLOR_PAIR(4));
-                    mvwprintw(win, y, x, "%s", buffer);
-                    wattroff(win, COLOR_PAIR(4));
+                    colorLine(win, 4, y, x, buffer);
                 } else if (search(symbols, buffer)) {
-                    wattron(win, COLOR_PAIR(6));
-                    mvwprintw(win, y, x, "%s", buffer);
-                    wattroff(win, COLOR_PAIR(6));
+                    colorLine(win, 6, y, x, buffer);
                 } else if (search(functions, buffer)) {
-                    wattron(win, COLOR_PAIR(2));
-                    mvwprintw(win, y, x, "%s", buffer);
-                    wattroff(win, COLOR_PAIR(2));
+                    colorLine(win, 2, y, x, buffer);
                 } else if (search(operators, buffer)) {
-                    wattron(win, COLOR_PAIR(5));
-                    mvwprintw(win, y, x, "%s", buffer);
-                    wattroff(win, COLOR_PAIR(5));
+                    colorLine(win, 5, y, x, buffer);
                 } else {
                     mvwprintw(win, y, x, "%s", buffer);
                 }
                 x += buffer_index;
                 buffer_index = 0;
             }
-            wattron(win, COLOR_PAIR(1));
-            mvwprintw(win, y, x, "%c", *cursor);
+            colorLine(win, 1, y, x, (char[]){ *cursor, '\0' });
             x++;
-        } else if (hash_table_contains(multicomments1, cursor) && hash_table_contains(multicomments2, cursor+1)) {
+        } else if (hash_table_contains(multicomments1, cursor) && hash_table_contains(multicomments2, cursor + 1)) {
             in_multiline_comment = 1;
             cursor++;
             if (buffer_index > 0) {
                 buffer[buffer_index] = '\0';
                 if (search(keywords, buffer)) {
-                    wattron(win, COLOR_PAIR(4));
-                    mvwprintw(win, y, x, "%s", buffer);
-                    wattroff(win, COLOR_PAIR(4));
+                    colorLine(win, 4, y, x, buffer);
                 } else if (search(symbols, buffer)) {
-                    wattron(win, COLOR_PAIR(6));
-                    mvwprintw(win, y, x, "%s", buffer);
-                    wattroff(win, COLOR_PAIR(6));
+                    colorLine(win, 6, y, x, buffer);
                 } else if (search(functions, buffer)) {
-                    wattron(win, COLOR_PAIR(2));
-                    mvwprintw(win, y, x, "%s", buffer);
-                    wattroff(win, COLOR_PAIR(2));
+                    colorLine(win, 2, y, x, buffer);
                 } else if (search(operators, buffer)) {
-                    wattron(win, COLOR_PAIR(5));
-                    mvwprintw(win, y, x, "%s", buffer);
-                    wattroff(win, COLOR_PAIR(5));
+                    colorLine(win, 5, y, x, buffer);
                 } else {
                     mvwprintw(win, y, x, "%s", buffer);
                 }
                 x += buffer_index;
                 buffer_index = 0;
             }
-            wattron(win, COLOR_PAIR(1));
-            mvwprintw(win, y, x, "%c%c", *(cursor-1), *cursor);
+            colorLine(win, 1, y, x, (char[]){ *(cursor-1), *cursor, '\0' });
             x += 2;
             cursor++;
         } else if (in_string) {
-            wattron(win, COLOR_PAIR(3));
-            mvwprintw(win, y, x, "%c", *cursor);
-            wattroff(win, COLOR_PAIR(3));
+            colorLine(win, 3, y, x, (char[]){ *cursor, '\0' });
             x++;
             cursor++;
         } else if (in_comment || in_multiline_comment) {
-            wattron(win, COLOR_PAIR(1));
-            mvwprintw(win, y, x, "%c", *cursor);
+            colorLine(win, 1, y, x, (char[]){ *cursor, '\0' });
             if (*cursor == '\n' && in_comment) {
                 in_comment = 0;
-            } else if (hash_table_contains(multicomments2, cursor) && hash_table_contains(multicomments1, cursor+1)) { // implementation of /* */ (See syntax.yaml for more)
+            } else if (hash_table_contains(multicomments2, cursor) && hash_table_contains(multicomments1, cursor + 1)) { // End of multi-line comment
                 cursor++;
                 mvwprintw(win, y, x + 1, "%c", *cursor);
                 wattroff(win, COLOR_PAIR(1));
@@ -242,21 +223,13 @@ void highlight_code(WINDOW *win, int start_y, int start_x, const char *code, Has
             if (buffer_index > 0) {
                 buffer[buffer_index] = '\0';
                 if (search(keywords, buffer)) {
-                    wattron(win, COLOR_PAIR(4));
-                    mvwprintw(win, y, x, "%s", buffer);
-                    wattroff(win, COLOR_PAIR(4));
+                    colorLine(win, 4, y, x, buffer);
                 } else if (search(symbols, buffer)) {
-                    wattron(win, COLOR_PAIR(6));
-                    mvwprintw(win, y, x, "%s", buffer);
-                    wattroff(win, COLOR_PAIR(6));
+                    colorLine(win, 6, y, x, buffer);
                 } else if (search(functions, buffer)) {
-                    wattron(win, COLOR_PAIR(2));
-                    mvwprintw(win, y, x, "%s", buffer);
-                    wattroff(win, COLOR_PAIR(2));
+                    colorLine(win, 2, y, x, buffer);
                 } else if (search(operators, buffer)) {
-                    wattron(win, COLOR_PAIR(5));
-                    mvwprintw(win, y, x, "%s", buffer);
-                    wattroff(win, COLOR_PAIR(5));
+                    colorLine(win, 5, y, x, buffer);
                 } else {
                     mvwprintw(win, y, x, "%s", buffer);
                 }
@@ -276,22 +249,16 @@ void highlight_code(WINDOW *win, int start_y, int start_x, const char *code, Has
             if (buffer_index > 0) {
                 buffer[buffer_index] = '\0';
                 if (search(strings, buffer)) {
-                    wattron(win, COLOR_PAIR(3));
-                    mvwprintw(win, y, x, "%s", buffer);
-                    wattroff(win, COLOR_PAIR(3));
+                    colorLine(win, 3, y, x, buffer);
                 } else if (search(keywords, buffer)) {
-                  wattron(win, COLOR_PAIR(4));
-                  mvwprintw(win, y, x, "%s", buffer);
-                  wattroff(win, COLOR_PAIR(4));
+                    colorLine(win, 4, y, x, buffer);
                 } else {
                     mvwprintw(win, y, x, "%s", buffer);
                 }
                 x += buffer_index;
                 buffer_index = 0;
             }
-            wattron(win, COLOR_PAIR(6));
-            mvwprintw(win, y, x, "%c", *cursor);
-            wattroff(win, COLOR_PAIR(6));
+            colorLine(win, 6, y, x, (char[]){ *cursor, '\0' });
             x++;
             cursor++;
         } else {
@@ -303,26 +270,19 @@ void highlight_code(WINDOW *win, int start_y, int start_x, const char *code, Has
     if (buffer_index > 0) {
         buffer[buffer_index] = '\0';
         if (search(keywords, buffer)) {
-            wattron(win, COLOR_PAIR(4));
-            mvwprintw(win, y, x, "%s", buffer);
-            wattroff(win, COLOR_PAIR(4));
+            colorLine(win, 4, y, x, buffer);
         } else if (search(symbols, buffer)) {
-            wattron(win, COLOR_PAIR(6));
-            mvwprintw(win, y, x, "%s", buffer);
-            wattroff(win, COLOR_PAIR(6));
+            colorLine(win, 6, y, x, buffer);
         } else if (search(functions, buffer)) {
-            wattron(win, COLOR_PAIR(2));
-            mvwprintw(win, y, x, "%s", buffer);
-            wattroff(win, COLOR_PAIR(2));
+            colorLine(win, 2, y, x, buffer);
         } else if (search(operators, buffer)) {
-            wattron(win, COLOR_PAIR(5));
-            mvwprintw(win, y, x, "%s", buffer);
-            wattroff(win, COLOR_PAIR(5));
+            colorLine(win, 5, y, x, buffer);
         } else {
             mvwprintw(win, y, x, "%s", buffer);
         }
     }
 }
+
 
 int main() {
     // Initialize hash tables
@@ -336,7 +296,7 @@ int main() {
     HashTable *operators = create_table();
 
     // Load syntax elements from YAML file
-    load_syntax("c.yaml", keywords, singlecomments, multicomments1, multicomments2, strings, functions, symbols, operators);
+    load_syntax("java.yaml", keywords, singlecomments, multicomments1, multicomments2, strings, functions, symbols, operators);
 
     // Initialize ncurses
     initscr();
@@ -352,7 +312,7 @@ int main() {
     init_pair(3, COLOR_YELLOW, -1);
     init_pair(4, COLOR_BLUE, -1);
     init_pair(5, COLOR_MAGENTA, -1);
-    init_pair(6, COLOR_RED, -1);
+    init_pair(6, 175, 235); // Use the custom color for the foreground
     cbreak();
     refresh();
 
@@ -374,7 +334,7 @@ int main() {
 
 
     // Highlight the code
-    highlight_code(win, 1, 1, code, keywords, singlecomments, multicomments1, multicomments2, strings, functions, symbols, operators);
+    highlight_code(win, 1, 1, java_code, keywords, singlecomments, multicomments1, multicomments2, strings, functions, symbols, operators);
     wrefresh(win);
 
     // sleep for sometime (debugging step)
