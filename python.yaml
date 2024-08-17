@@ -88,6 +88,9 @@ symbols:
 singlecomments:
   - '#'
 
+singlecommentslen:
+  - '1'
+
 multicomments1:
   - "\"\"\""
 

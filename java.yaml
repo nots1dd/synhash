@@ -12,25 +12,21 @@ keywords:
   - continue
   - default
   - do
-  - double
   - else
   - enum
   - extends
   - final
   - finally
-  - float
   - for
-  - goto
   - if
   - implements
   - import
   - instanceof
-  - int
   - interface
   - long
   - native
   - new
-  - null
+  - 'null'
   - package
   - private
   - protected
@@ -50,24 +46,22 @@ keywords:
   - void
   - volatile
   - while
-  - true
-  - false
 
 functions:
-  - System
-  - "String"
-  - Integer
-  - Float
-  - Double
-  - Boolean
-  - Character
-  - Object
+  - 'System'
+  - Integer.parseInt
+  - 'String'
+  - int 
+  - char 
+  - float 
+  - double
 
 operators:
   - '+'
   - '-'
   - '*'
   - '/'
+  - '%'
   - '='
   - '=='
   - '!='
@@ -75,8 +69,9 @@ operators:
   - '>'
   - '<='
   - '>='
-  - '++'
-  - '--'
+  - '&&'
+  - '||'
+  - '!'
 
 symbols:
   - '('
@@ -85,21 +80,27 @@ symbols:
   - '}'
   - '['
   - ']'
-  - '.'
-  - ','
-  - ';'
   - ':'
+  - ','
+  - '.'
+  - ';'
+  - '='
+  - '->'
+  - '::'
+  - '@'
 
 singlecomments:
   - '/'
 
+singlecommentslen: 
+  - '2'
+
 multicomments1:
-  - '/*'
+  - '/'
 
 multicomments2:
-  - '*/'
+  - '*'
 
 strings:
   - "\""
   - "'"
-

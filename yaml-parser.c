@@ -12,27 +12,31 @@ int multicomments1_length = 0;
 int multicomments2_length = 0;
 
 // Load syntax from YAML file
-void load_syntax(const char *path, HashTable *keywords, HashTable *singlecomments, HashTable *multicomments1, HashTable *multicomments2, HashTable *strings, HashTable *functions, HashTable *symbols, HashTable *operators) {
+bool load_syntax(const char *path, HashTable *keywords, HashTable *singlecomments, HashTable *multicomments1, HashTable *multicomments2, HashTable *strings, HashTable *functions, HashTable *symbols, HashTable *operators, int *singlecommentslen) {
     FILE *fh = fopen(path, "r");
     yaml_parser_t parser;
     yaml_event_t event;
+    bool success = true;
+
     int in_keywords = 0;
     int in_singlecomments = 0;
     int in_multcomment1 = 0;
     int in_multcomment2 = 0;
     int in_strings = 0;
     int in_functions = 0;
+    int in_singlecommentslen = 0;
     int in_symbols = 0;
     int in_operators = 0;
 
     // Initialize parser
     if (!yaml_parser_initialize(&parser)) {
-        fputs("Failed to initialize parser!\n", stderr);
-        exit(EXIT_FAILURE);
+        fprintf(stderr, " [LIBYAML] Failed to initialize parser for synhash: %s\n", path);
+        return false;
     }
     if (fh == NULL) {
-        fputs("Failed to open file!\n", stderr);
-        exit(EXIT_FAILURE);
+        fprintf(stderr, " [LIBYAML] Failed to open file for synhash: %s\n", path);
+        yaml_parser_delete(&parser);
+        return false;
     }
 
     // Set input file
@@ -40,27 +44,29 @@ void load_syntax(const char *path, HashTable *keywords, HashTable *singlecomment
 
     do {
         if (!yaml_parser_parse(&parser, &event)) {
-            printf("Parser error %d\n", parser.error);
-            exit(EXIT_FAILURE);
+            fprintf(stderr, " [LIBYAML] Parser error %d in file: %s\n", parser.error, path);
+            success = false;
+            break;
         }
 
         switch (event.type) {
             case YAML_NO_EVENT:
-                puts("No event!");
+                fprintf(stderr, " [LIBYAML] No event in file: %s\n", path);
                 break;
             case YAML_STREAM_START_EVENT:
-                break;
             case YAML_STREAM_END_EVENT:
-                break;
             case YAML_DOCUMENT_START_EVENT:
-                break;
             case YAML_DOCUMENT_END_EVENT:
-                break;
+            case YAML_MAPPING_START_EVENT:
+            case YAML_MAPPING_END_EVENT:
             case YAML_SEQUENCE_START_EVENT:
+            case YAML_ALIAS_EVENT:
+                // Handle these cases as needed
                 break;
             case YAML_SEQUENCE_END_EVENT:
                 in_keywords = 0;
                 in_singlecomments = 0;
+                in_singlecommentslen = 0;
                 in_strings = 0;
                 in_functions = 0;
                 in_symbols = 0;
@@ -68,24 +74,16 @@ void load_syntax(const char *path, HashTable *keywords, HashTable *singlecomment
                 in_multcomment1 = 0;
                 in_multcomment2 = 0;
                 break;
-            case YAML_MAPPING_START_EVENT:
-                break;
-            case YAML_MAPPING_END_EVENT:
-                in_singlecomments = 0;
-                break;
-            case YAML_ALIAS_EVENT:
-                printf("Got alias (anchor %s)\n", event.data.alias.anchor);
-                break;
             case YAML_SCALAR_EVENT:
                 if (in_keywords) {
                     insert(keywords, (char *)event.data.scalar.value);
                 } else if (in_singlecomments) {
                     insert(singlecomments, (char *)event.data.scalar.value);
+                } else if (in_singlecommentslen) {
+                    *singlecommentslen = atoi((char *)event.data.scalar.value);
                 } else if (in_multcomment1) {
-                    multicomments1_length += strlen((char *)event.data.scalar.value);
                     insert(multicomments1, (char *)event.data.scalar.value);
                 } else if (in_multcomment2) {
-                    multicomments2_length += strlen((char *)event.data.scalar.value);
                     insert(multicomments2, (char *)event.data.scalar.value);
                 } else if (in_strings) {
                     insert(strings, (char *)event.data.scalar.value);
@@ -112,8 +110,13 @@ void load_syntax(const char *path, HashTable *keywords, HashTable *singlecomment
                         in_symbols = 1;
                     } else if (strcmp((char *)event.data.scalar.value, "operators") == 0) {
                         in_operators = 1;
+                    } else if (strcmp((char *)event.data.scalar.value, "singlecommentslen") == 0) {
+                        in_singlecommentslen = 1;
                     }
                 }
+                break;
+            default:
+                fprintf(stderr, " [LIBYAML] Unhandled YAML event type: %d\n", event.type);
                 break;
         }
 
@@ -124,112 +127,181 @@ void load_syntax(const char *path, HashTable *keywords, HashTable *singlecomment
 
     yaml_event_delete(&event);
     yaml_parser_delete(&parser);
-    fclose(fh); 
+    fclose(fh);
+
+    if (success) {
+        fprintf(stdout, " [LIBYAML] Successfully parsed file: %s\n", path);
+    } else {
+        fprintf(stderr, " [LIBYAML] Parsing failed for file: %s\n", path);
+    }
+
+    return success;
 }
 
-void colorLine(WINDOW* win, int color_pair, int y, int x, char *buffer) {
+
+void highlightLine(WINDOW* win, int color_pair, int y, int x, char *buffer) {
   wattron(win, COLOR_PAIR(color_pair));
   mvwprintw(win, y, x, "%s", buffer);
   wattroff(win, COLOR_PAIR(color_pair));
 }
 
 // Function to highlight code snippet
-void highlight_code(WINDOW *win, int start_y, int start_x, const char *code, HashTable *keywords, HashTable *singlecomments, HashTable *multicomments1, HashTable *multicomments2, HashTable *strings, HashTable *functions, HashTable *symbols, HashTable *operators) {
+void highlight_code(WINDOW *win, int start_y, int start_x, const char *code, HashTable *keywords, HashTable *singlecomments, HashTable *multicomments1, HashTable *multicomments2, HashTable *strings, HashTable *functions, HashTable *symbols, HashTable *operators, int *singlecommentslen) {
     const char *cursor = code;
     char buffer[256];
     int in_string = 0;
-    int in_comment = 0; // Single-line comment
-    int in_multiline_comment = 0; // Multi-line comment
+    int in_comment = 0;
+    int in_multiline_comment = 0;
     int buffer_index = 0;
     int x = start_x, y = start_y;
 
     while (*cursor != '\0') {
-        if (hash_table_contains(strings, cursor)) {
-            in_string = !in_string;
-            if (in_string && buffer_index > 0) {
-                buffer[buffer_index] = '\0';
-                if (search(strings, buffer)) {
-                    colorLine(win, 3, y, x, buffer);
-                } else {
-                    mvwprintw(win, y, x, "%s", buffer);
-                }
-                x += buffer_index;
-                buffer_index = 0;
-            }
-            colorLine(win, 3, y, x, (char[]){ *cursor, '\0' });
-            x++;
-            cursor++;
-        } else if (hash_table_contains(singlecomments, cursor) && hash_table_contains(singlecomments, cursor + 1)) {
-            in_comment = 1;
-            cursor++;
-            if (buffer_index > 0) {
-                buffer[buffer_index] = '\0';
-                if (search(keywords, buffer)) {
-                    colorLine(win, 4, y, x, buffer);
-                } else if (search(symbols, buffer)) {
-                    colorLine(win, 6, y, x, buffer);
-                } else if (search(functions, buffer)) {
-                    colorLine(win, 2, y, x, buffer);
-                } else if (search(operators, buffer)) {
-                    colorLine(win, 5, y, x, buffer);
-                } else {
-                    mvwprintw(win, y, x, "%s", buffer);
-                }
-                x += buffer_index;
-                buffer_index = 0;
-            }
-            colorLine(win, 1, y, x, (char[]){ *cursor, '\0' });
-            x++;
-        } else if (hash_table_contains(multicomments1, cursor) && hash_table_contains(multicomments2, cursor + 1)) {
+        // Check for multiline comments first
+        if (hash_table_contains(multicomments1, cursor) && hash_table_contains(multicomments2, cursor + 1)) {
             in_multiline_comment = 1;
             cursor++;
             if (buffer_index > 0) {
                 buffer[buffer_index] = '\0';
-                if (search(keywords, buffer)) {
-                    colorLine(win, 4, y, x, buffer);
-                } else if (search(symbols, buffer)) {
-                    colorLine(win, 6, y, x, buffer);
-                } else if (search(functions, buffer)) {
-                    colorLine(win, 2, y, x, buffer);
-                } else if (search(operators, buffer)) {
-                    colorLine(win, 5, y, x, buffer);
-                } else {
-                    mvwprintw(win, y, x, "%s", buffer);
-                }
+                mvwprintw(win, y, x, "%s", buffer);
                 x += buffer_index;
                 buffer_index = 0;
             }
-            colorLine(win, 1, y, x, (char[]){ *(cursor-1), *cursor, '\0' });
+            highlightLine(win, 21, y, x, (char[]){ *(cursor-1), *cursor, '\0' });
             x += 2;
             cursor++;
-        } else if (in_string) {
-            colorLine(win, 3, y, x, (char[]){ *cursor, '\0' });
-            x++;
-            cursor++;
-        } else if (in_comment || in_multiline_comment) {
-            colorLine(win, 1, y, x, (char[]){ *cursor, '\0' });
-            if (*cursor == '\n' && in_comment) {
-                in_comment = 0;
-            } else if (hash_table_contains(multicomments2, cursor) && hash_table_contains(multicomments1, cursor + 1)) { // End of multi-line comment
-                cursor++;
-                mvwprintw(win, y, x + 1, "%c", *cursor);
-                wattroff(win, COLOR_PAIR(1));
+        } else if (in_multiline_comment) {
+            highlightLine(win, 21, y, x, (char[]){ *cursor, '\0' });
+            if (hash_table_contains(multicomments2, cursor) && hash_table_contains(multicomments1, cursor + 1)) {
+                highlightLine(win, 21, y, x + 1, (char[]){ *(cursor+1), '\0' });
                 x++;
+                cursor++;
                 in_multiline_comment = 0;
+            } else if (*cursor == '\n') {
+                x = start_x - 1;
+                y++;
+                in_comment = 0;
             }
             x++;
             cursor++;
-        } else if (isspace(*cursor)) {
+        } 
+        // Then check for strings
+        else if (hash_table_contains(strings, cursor)) {
+            in_string = !in_string;
+            if (in_string && buffer_index > 0) {
+                buffer[buffer_index] = '\0';
+                mvwprintw(win, y, x, "%s", buffer);
+                x += buffer_index;
+                buffer_index = 0;
+            }
+            highlightLine(win, 22, y, x, (char[]){ *cursor, '\0' });
+            x++;
+            cursor++;
+        } 
+        // Then check for single line comments
+        else if (hash_table_contains(singlecomments, cursor) && !in_string) {
+            int comment_track = 1;
+
+            if (buffer_index > 0) {
+                buffer[buffer_index] = '\0';
+                mvwprintw(win, y, x, "%s", buffer);
+                x += buffer_index;
+                buffer_index = 0;
+            }
+            cursor++;
+            char *tmp = cursor;
+
+            // Check if the length of the comment matches singlecommentslen
+            while (comment_track < *singlecommentslen && *cursor != '\0' && *cursor != ' ') {
+                if (hash_table_contains(singlecomments, cursor)) {
+                    comment_track++;
+                    cursor++;
+                    x++;
+                } else {
+                    break;
+                }
+            }
+
+            if (comment_track == *singlecommentslen) {
+                // Highlight the comment
+                in_comment = 1;
+                cursor = tmp;  // Reset to the beginning of the comment
+                x--;
+                while (*cursor != '\0' && *cursor != '\n') {
+                    highlightLine(win, 21, y, x, (char[]){ *(cursor-1), '\0' });
+                    x++;
+                    cursor++;
+                }
+                if (*cursor == '\n') {
+                    // Handle newline character
+                    highlightLine(win, 21, y, x, cursor-1);
+                    x = start_x;
+                    y++;
+                    cursor++;
+                    in_comment = 0;
+                }
+            } else {
+                // Not a comment, so move the cursor back and skip the first character
+                cursor = tmp;
+                mvwprintw(win, y, x, "%c", *(cursor-1));
+                x++;
+            }
+        } 
+        // Handle ongoing string state
+        else if (in_string) {
+            highlightLine(win, 22, y, x, (char[]){ *cursor, '\0' });
+            x++;
+            cursor++;
+        } 
+        // Handle ongoing comment state
+        else if (in_comment) {
+            highlightLine(win, 21, y, x, (char[]){ *cursor, '\0' });
+            if (*cursor == '\n') {
+                x = start_x;
+                y++;
+                in_comment = 0;
+            }
+            x++;
+            cursor++;
+        } 
+        // Handle dot notation like "System.out.println"
+        else if (*cursor == '.') {
+            if (buffer_index > 0) {
+                buffer[buffer_index] = '\0';
+                if (search(functions, buffer)) {
+                    highlightLine(win, 26, y, x, buffer);
+                    x += buffer_index;
+                    buffer_index = 0;
+                }
+            }
+            highlightLine(win, 25, y, x, (char[]){ *cursor, '\0' });
+            x++;
+            cursor++;
+
+            // Handle function or method after the dot
+            while (isalnum(*cursor) || *cursor == '_') {
+                buffer[buffer_index++] = *cursor;
+                cursor++;
+            }
+            buffer[buffer_index] = '\0';
+            if (search(functions, buffer)) {
+                highlightLine(win, 26, y, x, buffer);
+                x += buffer_index;
+            } else {
+                mvwprintw(win, y, x, "%s", buffer);
+                x += buffer_index;
+            }
+            buffer_index = 0;
+        }
+        // Handle whitespace
+        else if (isspace(*cursor)) {
             if (buffer_index > 0) {
                 buffer[buffer_index] = '\0';
                 if (search(keywords, buffer)) {
-                    colorLine(win, 4, y, x, buffer);
-                } else if (search(symbols, buffer)) {
-                    colorLine(win, 6, y, x, buffer);
+                    highlightLine(win, 24, y, x, buffer);
                 } else if (search(functions, buffer)) {
-                    colorLine(win, 2, y, x, buffer);
-                } else if (search(operators, buffer)) {
-                    colorLine(win, 5, y, x, buffer);
+                    highlightLine(win, 26, y, x, buffer);
+                } else if (search(symbols, buffer)) {
+                    highlightLine(win, 25, y, x, buffer);
                 } else {
                     mvwprintw(win, y, x, "%s", buffer);
                 }
@@ -239,50 +311,58 @@ void highlight_code(WINDOW *win, int start_y, int start_x, const char *code, Has
             mvwprintw(win, y, x, "%c", *cursor);
             if (*cursor == '\n') {
                 x = start_x;
-                in_comment = 0;
                 y++;
+                in_comment = 0;
             } else {
                 x++;
             }
             cursor++;
-        } else if (hash_table_contains(symbols, cursor)) {
+        } 
+        // Handle numbers
+        else if (isdigit(*cursor)) {
             if (buffer_index > 0) {
                 buffer[buffer_index] = '\0';
-                if (search(strings, buffer)) {
-                    colorLine(win, 3, y, x, buffer);
-                } else if (search(keywords, buffer)) {
-                    colorLine(win, 4, y, x, buffer);
-                } else {
-                    mvwprintw(win, y, x, "%s", buffer);
-                }
+                mvwprintw(win, y, x, "%s", buffer);
                 x += buffer_index;
                 buffer_index = 0;
             }
-            colorLine(win, 6, y, x, (char[]){ *cursor, '\0' });
+            highlightLine(win, 27, y, x, (char[]){ *cursor, '\0' });
             x++;
             cursor++;
-        } else {
+        } 
+        // Handle symbols
+        else if (hash_table_contains(symbols, cursor)) {
+            if (buffer_index > 0) {
+                buffer[buffer_index] = '\0';
+                mvwprintw(win, y, x, "%s", buffer);
+                x += buffer_index;
+                buffer_index = 0;
+            }
+            highlightLine(win, 25, y, x, (char[]){ *cursor, '\0' });
+            x++;
+            cursor++;
+        } 
+        // Continue building buffer
+        else {
             buffer[buffer_index++] = *cursor;
             cursor++;
         }
     }
 
+    // Print any remaining buffer content
     if (buffer_index > 0) {
         buffer[buffer_index] = '\0';
         if (search(keywords, buffer)) {
-            colorLine(win, 4, y, x, buffer);
-        } else if (search(symbols, buffer)) {
-            colorLine(win, 6, y, x, buffer);
+            highlightLine(win, 24, y, x, buffer);
         } else if (search(functions, buffer)) {
-            colorLine(win, 2, y, x, buffer);
-        } else if (search(operators, buffer)) {
-            colorLine(win, 5, y, x, buffer);
+            highlightLine(win, 26, y, x, buffer);
+        } else if (search(symbols, buffer)) {
+            highlightLine(win, 25, y, x, buffer);
         } else {
             mvwprintw(win, y, x, "%s", buffer);
         }
     }
 }
-
 
 int main() {
     // Initialize hash tables
@@ -296,7 +376,8 @@ int main() {
     HashTable *operators = create_table();
 
     // Load syntax elements from YAML file
-    load_syntax("java.yaml", keywords, singlecomments, multicomments1, multicomments2, strings, functions, symbols, operators);
+    int singlecommentslen = 0;
+    bool syntaxLoad = load_syntax("java.yaml", keywords, singlecomments, multicomments1, multicomments2, strings, functions, symbols, operators, &singlecommentslen);
 
     // Initialize ncurses
     initscr();
@@ -307,12 +388,13 @@ int main() {
         init_color(COLOR_CYAN, 70 * 1000 / 255, 70 * 1000 / 255, 70 * 1000 / 255);
     }
 
-    init_pair(1, COLOR_CYAN, -1);
-    init_pair(2, COLOR_GREEN, -1);
-    init_pair(3, COLOR_YELLOW, -1);
-    init_pair(4, COLOR_BLUE, -1);
-    init_pair(5, COLOR_MAGENTA, -1);
-    init_pair(6, 175, 235); // Use the custom color for the foreground
+    init_pair(21, COLOR_CYAN, -1);
+    init_pair(22, COLOR_GREEN, -1);
+    init_pair(23, COLOR_YELLOW, -1);
+    init_pair(24, COLOR_BLUE, -1);
+    init_pair(25, COLOR_MAGENTA, -1);
+    init_pair(26, 175, 235); // Use the custom color for the foreground
+    init_pair(27, COLOR_RED, -1);
     cbreak();
     refresh();
 
@@ -334,8 +416,12 @@ int main() {
 
 
     // Highlight the code
-    highlight_code(win, 1, 1, java_code, keywords, singlecomments, multicomments1, multicomments2, strings, functions, symbols, operators);
-    wrefresh(win);
+    if (syntaxLoad) {
+      highlight_code(win, 1, 1, java_code, keywords, singlecomments, multicomments1, multicomments2, strings, functions, symbols, operators, &singlecommentslen);
+      wrefresh(win);
+    } else {
+      mvwprintw(win, 3, 1, "NO YAML FILE FOUND!");
+    } 
 
     // sleep for sometime (debugging step)
     sleep(3);
@@ -353,3 +439,4 @@ int main() {
 
     return 0;
 }
+

@@ -62,9 +62,13 @@ symbols:
   - ';'
   - '='
   - '->'
+  - '!'
 
 singlecomments:
   - '/'
+
+singlecommentslen: 
+  - '2'
 
 multicomments1:
   - '/'
