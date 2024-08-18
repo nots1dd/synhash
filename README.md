@@ -98,6 +98,7 @@ The YAML file should contain sections for different syntax elements:
   - `25`: Symbols.
   - `26`: Functions.
   - `27`: Numbers.
+  - `28`: Functions (anything before `(`)
 
 ## Usage
 

@@ -177,7 +177,7 @@ void highlight_code(WINDOW *win, int start_y, int start_x, const char *code, Has
                 cursor++;
                 in_multiline_comment = 0;
             } else if (*cursor == '\n') {
-                x = start_x - 1;
+                x = start_x-1;
                 y++;
                 in_comment = 0;
             }
@@ -225,7 +225,9 @@ void highlight_code(WINDOW *win, int start_y, int start_x, const char *code, Has
                 // Highlight the comment
                 in_comment = 1;
                 cursor = tmp;  // Reset to the beginning of the comment
-                x--;
+                if (*singlecommentslen > 1) {
+                  x--;
+                }
                 while (*cursor != '\0' && *cursor != '\n') {
                     highlightLine(win, 21, y, x, (char[]){ *(cursor-1), '\0' });
                     x++;
@@ -263,16 +265,34 @@ void highlight_code(WINDOW *win, int start_y, int start_x, const char *code, Has
             x++;
             cursor++;
         } 
+        // Handle the '(' character, which typically follows a function name
+        else if (*cursor == '(') {
+            if (buffer_index > 0) {
+                buffer[buffer_index] = '\0';
+                // Color code the function name with color pair 28
+                highlightLine(win, 28, y, x, buffer);
+                x+=buffer_index;
+                buffer_index = 0;
+            }
+
+            // Highlight the '(' symbol with its corresponding color pair (if needed)
+            highlightLine(win, 25, y, x, (char[]){ *cursor, '\0' });
+            x++;
+            cursor++;
+        }
         // Handle dot notation like "System.out.println"
         else if (*cursor == '.') {
             if (buffer_index > 0) {
                 buffer[buffer_index] = '\0';
                 if (search(functions, buffer)) {
                     highlightLine(win, 26, y, x, buffer);
-                    x += buffer_index;
-                    buffer_index = 0;
+                } else {
+                    mvwprintw(win, y, x, "%s", buffer);
                 }
+                x += buffer_index;
+                buffer_index = 0;
             }
+
             highlightLine(win, 25, y, x, (char[]){ *cursor, '\0' });
             x++;
             cursor++;
@@ -285,13 +305,13 @@ void highlight_code(WINDOW *win, int start_y, int start_x, const char *code, Has
             buffer[buffer_index] = '\0';
             if (search(functions, buffer)) {
                 highlightLine(win, 26, y, x, buffer);
-                x += buffer_index;
             } else {
                 mvwprintw(win, y, x, "%s", buffer);
-                x += buffer_index;
             }
+            x += buffer_index;
             buffer_index = 0;
         }
+
         // Handle whitespace
         else if (isspace(*cursor)) {
             if (buffer_index > 0) {
@@ -329,9 +349,30 @@ void highlight_code(WINDOW *win, int start_y, int start_x, const char *code, Has
             highlightLine(win, 27, y, x, (char[]){ *cursor, '\0' });
             x++;
             cursor++;
-        } 
+        }
+        else if (hash_table_contains(operators, cursor)) {
+            if (buffer_index > 0) {
+                buffer[buffer_index] = '\0';
+                // Print buffer content before handling the operator
+                if (search(keywords, buffer)) {
+                    highlightLine(win, 24, y, x, buffer);
+                } else if (search(functions, buffer)) {
+                    highlightLine(win, 26, y, x, buffer);
+                } else if (search(symbols, buffer)) {
+                    highlightLine(win, 25, y, x, buffer);
+                } else {
+                    mvwprintw(win, y, x, "%s", buffer);
+                }
+                x += buffer_index;
+                buffer_index = 0;
+            }
+            // Highlight the operator
+            highlightLine(win, 23, y, x, (char[]){ *cursor, '\0' });  // Using color pair 23 for operators
+            x++;
+            cursor++;
+        }
         // Handle symbols
-        else if (hash_table_contains(symbols, cursor)) {
+        else if (hash_table_contains(symbols, cursor) && *cursor != '(') {
             if (buffer_index > 0) {
                 buffer[buffer_index] = '\0';
                 mvwprintw(win, y, x, "%s", buffer);
@@ -395,6 +436,7 @@ int main() {
     init_pair(25, COLOR_MAGENTA, -1);
     init_pair(26, 175, 235); // Use the custom color for the foreground
     init_pair(27, COLOR_RED, -1);
+    init_pair(28, 108, 235);
     cbreak();
     refresh();
 
